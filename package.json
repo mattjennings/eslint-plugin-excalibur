@@ -1,25 +1,25 @@
 {
   "name": "eslint-plugin-excalibur",
-  "version": "1.0.0",
-  "type": "module",
+  "version": "0.0.1",
+  "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@eslint/js": "^9.0.0",
-    "@types/estree": "^1.0.5",
-    "eslint": "^9.0.0",
-    "eslint-plugin-eslint-plugin": "^6.0.0",
-    "eslint-plugin-n": "^17.2.0",
-    "esquery": "^1.5.0",
-    "excalibur": "^0.29.2",
-    "globals": "^15.0.0",
-    "prettier": "^3.2.5"
+    "@types/node": "^20.12.7",
+    "@typescript-eslint/rule-tester": "^7.6.0",
+    "eslint": "^8.57.0",
+    "eslint-plugin-excalibur": "file:",
+    "prettier": "^3.2.5",
+    "typescript": "^5.4.5",
+    "typescript-eslint": "^7.6.0",
+    "vitest": "^1.5.0"
   },
   "peerDependencies": {
-    "eslint": "^9.0.0"
+    "eslint": "^8.57.0",
+    "@typescript-eslint/utils": ">=7.6.0"
   }
 }

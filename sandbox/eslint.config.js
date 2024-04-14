@@ -1,6 +1,9 @@
-import plugin from '../plugin.js'
+import eslint from '@eslint/js'
+import tseslint from 'typescript-eslint'
+import excalibur from '../index.js'
 
-/**
- * @type {import("eslint").Linter.Config}
- */
-export default [...plugin.configs.recommended]
+export default tseslint.config(
+  eslint.configs.recommended,
+  ...tseslint.configs.recommended,
+  excalibur.configs.recommended,
+)

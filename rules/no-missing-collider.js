@@ -1,19 +1,23 @@
-/**
- * @type {import('eslint').Rule.RuleModule}
- */
-export default {
+/* eslint-disable @typescript-eslint/no-unsafe-enum-comparison */
+const { ESLintUtils } = require('@typescript-eslint/utils')
+
+module.exports = ESLintUtils.RuleCreator.withoutDocs({
   meta: {
+    type: 'suggestion',
+    schema: [],
     hasSuggestions: true,
     messages: {
       missingColliderInActorArgs:
         'Actor has a collisionType but is missing width, height, or a collider',
-
       // when args is spread from the constructor, we can't determine if the collider is missing
       ambiguousColliderInActorArgs:
-        'Actor has a collisionType but it is ambiguous if width, height, or a collider will exist in `{{ spreadVariableName }}`.',
+        'Actor has a collisionType but it is uncertain if width, height, or a collider will exist in `{{ spreadVariableName }}`.',
     },
   },
+  defaultOptions: [],
   create(context) {
+    const services = ESLintUtils.getParserServices(context)
+
     return {
       ClassDeclaration(node) {
         const classNames = ['Actor', 'ex.Actor']
@@ -36,7 +40,7 @@ export default {
             return
           }
 
-          /** @type {import('estree').ExpressionStatement | undefined} **/
+          /** @type {import('@typescript-eslint/utils').TSESTree.ExpressionStatement | undefined} **/
           const superCall = constructor.value.body.body.find(
             (node) =>
               node.type === 'ExpressionStatement' &&
@@ -49,7 +53,7 @@ export default {
           }
 
           /**
-           * @type {import('estree').ObjectExpression | undefined}
+           * @type {import('@typescript-eslint/utils').TSESTree.ObjectExpression | undefined}
            */
           const actorArgs =
             superCall.expression.arguments[0]?.type === 'ObjectExpression' &&
@@ -73,41 +77,26 @@ export default {
             return
           }
 
-          const flattenedProperties = populateSpreadInProperties(
-            context,
-            properties,
-          )
+          const providedActorArgsType = services.getTypeAtLocation(actorArgs)
 
-          if (!hasColliderArgs(flattenedProperties)) {
-            const unflattened = flattenedProperties.find(
-              (node) => node.type === 'SpreadElement',
-            )
+          if (!hasColliderTypes(providedActorArgsType.getProperties())) {
+            const untypedSpreadElements = properties.filter((node) => {
+              if (node.type === 'SpreadElement') {
+                const type = services.getTypeAtLocation(node.argument)
+                return !type || type.getProperties().length === 0
+              }
+              return false
+            })
 
-            // we were unable to resolve a spread (e.g. it's a param in the constructor)
-            if (unflattened) {
+            if (untypedSpreadElements.length > 0) {
               context.report({
                 node: collisionType,
                 messageId: 'ambiguousColliderInActorArgs',
                 data: {
-                  spreadVariableName: unflattened.argument?.name,
+                  spreadVariableName: untypedSpreadElements[0].argument?.name,
                 },
-                suggest: [
-                  {
-                    desc: 'Explicitly set width, height or collider',
-                    fix: function (fixer) {
-                      const indents = ' '.repeat(unflattened.loc.start.column)
-
-                      return fixer.insertTextAfter(
-                        unflattened,
-                        `,\n${indents}width: ${unflattened.argument.name}.width,\n${indents}height: ${unflattened.argument.name}.height,\n${indents}collider: ${unflattened.argument.name}.collider`,
-                      )
-                    },
-                  },
-                ],
               })
-            }
-            // properties are missing width and height or a collider
-            else {
+            } else {
               context.report({
                 node: collisionType,
                 messageId: 'missingColliderInActorArgs',
@@ -118,69 +107,15 @@ export default {
       },
     }
   },
-}
+})
 
 /**
- * Iterate over the properties of an object and replace
- * spread elements with their properties
- * @param {import('eslint').Rule.RuleContext} context
- * @type {Array<import('estree').Property | import('estree').SpreadElement>}
- * @returns {Array<import('estree').Property | import('estree').SpreadElement>>}
+ * @param {import('typescript').Symbol[]} properties
  */
-function populateSpreadInProperties(context, properties) {
-  const spread = properties.find((node) => node.type === 'SpreadElement')
-
-  return properties.flatMap((node) => {
-    if (node.type === 'SpreadElement') {
-      const declarator = getSpreadVariableDeclarator(spread)
-
-      if (declarator?.init?.properties) {
-        return populateSpreadInProperties(context, declarator.init.properties)
-      }
-    }
-
-    return node
-  })
-}
-
-/**
- * Return the variable declarator for a spread element
- * @type {import('estree').SpreadElement>}
- */
-function getSpreadVariableDeclarator(spread) {
-  const variableName = spread.argument?.name
-
-  if (!variableName) {
-    return
-  }
-
-  let parent = spread.parent
-
-  while (parent) {
-    if (parent.type === 'BlockStatement') {
-      const variableDeclarator = parent.body
-        .find((node) => node.type === 'VariableDeclaration')
-        ?.declarations.find(
-          (node) =>
-            node.type === 'VariableDeclarator' && node.id.name === variableName,
-        )
-
-      if (variableDeclarator) {
-        return variableDeclarator
-      }
-    }
-
-    parent = parent.parent
-  }
-}
-
-/**
- * Check if properties contain width and height or a collider
- */
-function hasColliderArgs(properties) {
-  const width = properties.find((node) => node.key?.name === 'width')
-  const height = properties.find((node) => node.key?.name === 'height')
-  const collider = properties.find((node) => node.key?.name === 'collider')
+function hasColliderTypes(properties) {
+  const width = properties.find((node) => node.escapedName === 'width')
+  const height = properties.find((node) => node.escapedName === 'height')
+  const collider = properties.find((node) => node.escapedName === 'collider')
 
   return Boolean(width && height) || !!collider
 }

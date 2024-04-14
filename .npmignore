@@ -1,0 +1,7 @@
+fixture
+sandbox
+rules/**/*.test.*
+.prettierrc
+.gitignore
+test-utils.mjs
+tsconfig.json
