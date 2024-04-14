@@ -6,11 +6,13 @@ const plugin = {
   configs: {},
   rules: {
     'no-missing-collider': require('./rules/no-missing-collider.js'),
+    'no-unadded-entity': require('./rules/no-unadded-entity.js'),
   },
 }
 
 const rules = {
   'excalibur/no-missing-collider': 'error',
+  'excalibur/no-unadded-entity': 'error',
 }
 
 Object.assign(plugin.configs, {

@@ -3,9 +3,8 @@ const { ESLintUtils } = require('@typescript-eslint/utils')
 
 module.exports = ESLintUtils.RuleCreator.withoutDocs({
   meta: {
-    type: 'suggestion',
+    type: 'problem',
     schema: [],
-    hasSuggestions: true,
     messages: {
       missingColliderInActorArgs:
         'Actor has a collisionType but is missing width, height, or a collider',
