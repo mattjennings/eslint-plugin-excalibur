@@ -21,7 +21,17 @@ module.exports = ESLintUtils.RuleCreator.withoutDocs({
       NewExpression(node) {
         const type = services.getTypeAtLocation(node)
 
-        if (isNewExpressionWithoutAssignment(node) && isExcaliburEntity(type)) {
+        const isInArray = node.parent?.type === 'ArrayExpression'
+        const isInObject = node.parent?.type === 'Property'
+        const isInReturnStatement = getParentOfType(node, 'ReturnStatement')
+
+        if (
+          isNewExpressionWithoutAssignment(node) &&
+          !isInArray &&
+          !isInObject &&
+          !isInReturnStatement &&
+          isExcaliburClass(type, ['Entity'])
+        ) {
           context.report({
             node,
             messageId: 'entityNotAdded',
@@ -32,38 +42,61 @@ module.exports = ESLintUtils.RuleCreator.withoutDocs({
         }
       },
 
+      // find created entities
       VariableDeclarator(node) {
-        const type = services.getTypeAtLocation(node)
+        const type = services.getTypeAtLocation(node.init)
 
-        if (isExcaliburEntity(type)) {
+        if (isExcaliburClass(type, ['Entity'])) {
+          // if an actor is exported we can't know when it's added to a scene
           const isExportedVariable =
             node.parent.parent.type === 'ExportNamedDeclaration'
 
-          // if an actor is exported we can't know when it's added to a scene
           if (!isExportedVariable) {
-            entitiesAdded.set(services.getSymbolAtLocation(node.id), false)
+            const initSymbol = services.getSymbolAtLocation(node.init)
+
+            if (initSymbol) {
+              // entitiesAdded.set(initSymbol.valueDeclaration?.symbol, false)
+            } else {
+              const nodeSymbol = services.getSymbolAtLocation(node.id)
+              entitiesAdded.set(nodeSymbol, false)
+            }
           }
         }
       },
-      'CallExpression > MemberExpression[property.name="add"]'(node) {
-        /**
-         * @type {import('@typescript-eslint/utils').TSESTree.CallExpression}
-         */
-        let caller = node.parent
 
-        while (caller && caller.type !== 'CallExpression') {
-          caller = caller.parent
-        }
+      // if entity is returned from a function, mark it as added because we can't know when it's added to a scene
+      ReturnStatement(node) {
+        const type = services.getTypeAtLocation(node.argument)
 
-        const type = services.getTypeAtLocation(caller.callee.object)
-        if (isExcaliburScene(type)) {
-          entitiesAdded.set(
-            services.getSymbolAtLocation(caller.arguments[0]),
-            true,
-          )
+        if (isExcaliburClass(type, ['Entity'])) {
+          entitiesAdded.set(services.getSymbolAtLocation(node.argument), true)
         }
       },
 
+      // mark any entities passed into .add() or .addChild() functions as added
+      'CallExpression > MemberExpression[property.name="add"], CallExpression > MemberExpression[property.name="addChild"]'(
+        node,
+      ) {
+        /**
+         * @type {import('@typescript-eslint/utils').TSESTree.CallExpression}
+         */
+        let caller = getParentOfType(node, 'CallExpression')
+
+        if (caller.arguments[0].type === 'Identifier') {
+          const argType = services.getTypeAtLocation(caller.arguments[0])
+
+          if (isExcaliburClass(argType, ['Entity'])) {
+            const symbol = services.getSymbolAtLocation(caller.arguments[0])
+            const declaration = findInitialDeclaration(services, symbol)
+
+            if (declaration?.symbol) {
+              entitiesAdded.set(declaration.symbol, true)
+            }
+          }
+        }
+      },
+
+      // evaluate for report
       'Program:exit'() {
         const unaddedEntities = Array.from(entitiesAdded.entries()).filter(
           ([, added]) => !added,
@@ -88,47 +121,45 @@ module.exports = ESLintUtils.RuleCreator.withoutDocs({
 
 /**
  * @param {ts.Type} type
+ * @param {string[]} classNames
+ * @param {object} options
+ * @param {boolean} options.includeAny
  */
-function isExcaliburEntity(type) {
-  if (type.symbol?.name === 'Entity') {
-    const { declarations } = type.symbol
-    for (const declaration of declarations) {
-      if (
-        declaration.getSourceFile().fileName.includes('node_modules/excalibur/')
-      ) {
-        return true
-      }
+function isExcaliburClass(type, classNames, options = {}) {
+  const { includeAny = false } = options
+
+  /**
+   * @type {ts.Type}
+   */
+  const resolvedBaseConstructorType = type.resolvedBaseConstructorType
+
+  const symbol =
+    resolvedBaseConstructorType?.symbol ||
+    type.symbol?.valueDeclaration?.symbol ||
+    type.symbol
+
+  const flags = type.getFlags()
+  const isAny = flags & ts.TypeFlags.Any
+
+  if (includeAny && isAny) {
+    return true
+  }
+
+  if (symbol?.name && classNames.includes(symbol?.name)) {
+    const { valueDeclaration } = symbol
+    if (
+      valueDeclaration
+        .getSourceFile()
+        .fileName.includes('node_modules/excalibur/')
+    ) {
+      return true
     }
   }
 
   const baseTypes = type.getBaseTypes()
   if (baseTypes) {
     for (const baseType of baseTypes) {
-      if (isExcaliburEntity(baseType)) {
-        return true
-      }
-    }
-  }
-
-  return false
-}
-
-function isExcaliburScene(type) {
-  if (type.symbol?.name === 'Scene') {
-    const { declarations } = type.symbol
-    for (const declaration of declarations) {
-      if (
-        declaration.getSourceFile().fileName.includes('node_modules/excalibur/')
-      ) {
-        return true
-      }
-    }
-  }
-
-  const baseTypes = type.getBaseTypes()
-  if (baseTypes) {
-    for (const baseType of baseTypes) {
-      if (isExcaliburScene(baseType)) {
+      if (isExcaliburClass(baseType, classNames, options)) {
         return true
       }
     }
@@ -143,4 +174,49 @@ function isNewExpressionWithoutAssignment(node) {
     node.parent &&
     node.parent.type !== 'VariableDeclarator'
   )
+}
+
+function getParentOfType(node, type) {
+  let parent = node.parent
+
+  while (parent && parent.type !== type) {
+    parent = parent.parent
+  }
+
+  return parent
+}
+
+function findInitialDeclaration(services, symbol) {
+  const typeChecker = services.program.getTypeChecker()
+  const declarations = symbol.getDeclarations()
+
+  if (!declarations) {
+    return undefined
+  }
+
+  let currentDeclaration = declarations[0]
+  let currentSymbol = symbol
+
+  // Walk back through variable assignments
+  while (currentDeclaration) {
+    if (ts.isVariableDeclaration(currentDeclaration)) {
+      const initializer = currentDeclaration.initializer
+      if (initializer && ts.isIdentifier(initializer)) {
+        const nextSymbol = typeChecker.getSymbolAtLocation(initializer)
+        if (nextSymbol && nextSymbol !== currentSymbol) {
+          currentSymbol = nextSymbol
+          currentDeclaration = nextSymbol.valueDeclaration
+          continue
+        }
+      }
+    }
+
+    break
+  }
+
+  if (currentDeclaration && ts.isVariableDeclaration(currentDeclaration)) {
+    return currentDeclaration
+  }
+
+  return undefined
 }

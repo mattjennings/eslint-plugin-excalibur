@@ -12,7 +12,7 @@ const plugin = {
 
 const rules = {
   'excalibur/no-missing-collider': 'error',
-  'excalibur/no-unadded-entity': 'error',
+  'excalibur/no-unadded-entity': 'warn',
 }
 
 Object.assign(plugin.configs, {
