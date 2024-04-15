@@ -172,7 +172,8 @@ function isNewExpressionWithoutAssignment(node) {
   return (
     node.type === 'NewExpression' &&
     node.parent &&
-    node.parent.type !== 'VariableDeclarator'
+    node.parent.type !== 'VariableDeclarator' &&
+    node.parent.type !== 'AssignmentExpression'
   )
 }
 

@@ -155,6 +155,24 @@ run('no-unadded-entity', rule, {
         scene.add(createActor())
       `,
     },
+    {
+      name: 'should not report when entity is assigned to scoped variable',
+      code: `
+      import * as ex from 'excalibur'
+      
+      let player
+
+      class Player extends ex.Actor {}
+      
+      class A extends ex.Scene {
+        onInitialize(): void {
+          player = new Player()
+          
+          this.add(player)
+        }
+      }
+      `,
+    },
   ],
 
   invalid: [
